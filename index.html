@@ -24,6 +24,7 @@
   --sh3:0 20px 40px rgba(0,0,0,.15),0 8px 16px rgba(0,0,0,.08);
 }
 body{font-family:var(--font);background:var(--bg);color:var(--t1);font-size:13px;line-height:1.5;display:flex;min-height:100vh;overflow-x:hidden}
+#sb,#main{display:none}
 
 /* ── SIDEBAR ── */
 #sb{width:var(--sw);background:var(--s0);border-right:1px solid var(--bd);position:fixed;top:0;left:0;height:100vh;z-index:50;display:flex;flex-direction:column;overflow-y:auto;box-shadow:var(--sh)}
@@ -237,7 +238,7 @@ tr:hover td{background:var(--s1)}
 <body>
 
 <!-- LOGIN SCREEN -->
-<div id="login-screen" style="display:flex;min-height:100vh;width:100vw;align-items:center;justify-content:center;background:var(--bg);position:fixed;top:0;left:0;z-index:9999">
+<div id="login-screen" style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:var(--bg);z-index:9999">
   <div style="background:var(--s0);border:1px solid var(--bd);border-radius:var(--r3);padding:40px 36px;width:100%;max-width:400px;box-shadow:var(--sh3)">
     <div style="text-align:center;margin-bottom:28px">
       <div style="font-size:32px;font-weight:700;color:var(--t1);letter-spacing:-.5px">Ve<span style="color:var(--blu)">lar</span></div>
@@ -562,29 +563,45 @@ function showLoginErr(msg){
 async function doLogout(){
   await sb.auth.signOut();
   CURRENT_USER=null;
-  document.getElementById('login-screen').style.display='flex';
-  document.getElementById('sb').style.display='none';
-  document.getElementById('main').style.display='none';
+  D={cad:[],lanc:[],cfg:{},forn:[]};
+  const ls=document.getElementById('login-screen');
+  const sb_el=document.getElementById('sb');
+  const main_el=document.getElementById('main');
+  if(ls) ls.style.display='flex';
+  if(sb_el) sb_el.style.display='none';
+  if(main_el) main_el.style.display='none';
+  // Clear login fields
+  const em=document.getElementById('login-email'),ps=document.getElementById('login-pass');
+  if(em) em.value=''; if(ps) ps.value='';
+  const err=document.getElementById('login-err'); if(err) err.style.display='none';
 }
 
 function showApp(){
-  document.getElementById('login-screen').style.display='none';
-  document.getElementById('sb').style.display='flex';
-  document.getElementById('main').style.display='flex';
+  const ls=document.getElementById('login-screen');
+  const sb_el=document.getElementById('sb');
+  const main_el=document.getElementById('main');
+  if(ls) ls.style.display='none';
+  if(sb_el) sb_el.style.cssText='display:flex;width:var(--sw);background:var(--s0);border-right:1px solid var(--bd);position:fixed;top:0;left:0;height:100vh;z-index:50;flex-direction:column;overflow-y:auto;box-shadow:var(--sh)';
+  if(main_el) main_el.style.cssText='display:flex;margin-left:var(--sw);flex:1;flex-direction:column;min-height:100vh';
   const su=document.getElementById('sb-user');
   if(su&&CURRENT_USER) su.textContent=CURRENT_USER.email;
 }
 
 async function checkSession(){
-  const {data} = await sb.auth.getSession();
-  if(data&&data.session&&data.session.user){
-    CURRENT_USER=data.session.user;
-    showApp();
-    await loadAll();
-  } else {
-    document.getElementById('login-screen').style.display='flex';
-    document.getElementById('sb').style.display='none';
-    document.getElementById('main').style.display='none';
+  try {
+    const {data} = await sb.auth.getSession();
+    if(data&&data.session&&data.session.user){
+      CURRENT_USER=data.session.user;
+      showApp();
+      await loadAll();
+    } else {
+      const ls=document.getElementById('login-screen');
+      if(ls) ls.style.display='flex';
+    }
+  } catch(e){
+    console.error('checkSession error:',e);
+    const ls=document.getElementById('login-screen');
+    if(ls) ls.style.display='flex';
   }
 }
 
@@ -653,36 +670,47 @@ async function loadAll(){
 
 // ── SAVE FUNCTIONS ────────────────────────────────────────────────────
 async function saveLancToDB(l){
-  const row = {
-    id:l.id, cad_id:l.cadId||null, mes:l.mes, obra:l.obra, cat:l.cat,
-    tipo:l.tipo||'', forn:l.forn, contrato:l.contrato||'',
-    venc:l.venc, venc_ov:l.venc_ov||null,
-    val_ref:l.val_ref, val_fatura:l.val_fatura,
-    pgto:l.pgto||'', responsavel:l.responsavel||'',
-    status:l.status, obs_fixa:l.obs_fixa||'',
-    obs:l.obs||'', titulo:l.titulo||'', medicao:l.medicao||'',
-    csc_id:l.csc_id||'', usuario:l.usuario||'', atualiz:l.atualiz||'',
-    hist:l.hist||[], updated_at:new Date().toISOString()
-  };
-  const {error} = await sb.from('lancamentos').upsert(row, {onConflict:'id'});
-  if(error) { console.error('saveLanc error:',error); toast('Erro ao salvar lançamento','err'); }
+  try {
+    const row = {
+      id:l.id, cad_id:l.cadId||null, mes:l.mes, obra:l.obra||'', cat:l.cat||'',
+      tipo:l.tipo||'', forn:l.forn||'', contrato:l.contrato||'',
+      venc:l.venc||null, venc_ov:l.venc_ov||null,
+      val_ref:l.val_ref||0, val_fatura:l.val_fatura!==undefined?l.val_fatura:null,
+      pgto:l.pgto||'', responsavel:l.responsavel||'',
+      status:l.status||'Sem fatura', obs_fixa:l.obs_fixa||'',
+      obs:l.obs||'', titulo:l.titulo||'', medicao:l.medicao||'',
+      csc_id:l.csc_id||'', usuario:l.usuario||'', atualiz:l.atualiz||'',
+      hist:JSON.parse(JSON.stringify(l.hist||[])),
+      updated_at:new Date().toISOString()
+    };
+    const {error} = await sb.from('lancamentos').upsert(row, {onConflict:'id'});
+    if(error) { console.error('saveLanc error:', JSON.stringify(error)); toast('Erro ao salvar: '+error.message,'err'); return false; }
+    return true;
+  } catch(e) { console.error('saveLanc exception:',e); toast('Erro ao salvar lançamento','err'); return false; }
 }
 
 async function saveCadToDB(d){
-  const row = {
-    id:d.id, obra:d.obra, cat:d.cat, tipo:d.tipo||'',
-    forn:d.forn, contrato:d.contrato||'', venc:d.venc,
-    valor:d.valor, pgto:d.pgto||'',
-    mes_ini:d.mes_ini, mes_fim:d.mes_fim||'',
-    responsavel:d.responsavel||'', ativo:d.ativo||'Sim', obs:d.obs||''
-  };
-  const {error} = await sb.from('cadastro').upsert(row, {onConflict:'id'});
-  if(error) { console.error('saveCad error:',error); toast('Erro ao salvar despesa','err'); }
+  try {
+    const row = {
+      id:d.id, obra:d.obra, cat:d.cat, tipo:d.tipo||'',
+      forn:d.forn, contrato:d.contrato||'', venc:d.venc||null,
+      valor:d.valor||0, pgto:d.pgto||'',
+      mes_ini:d.mes_ini, mes_fim:d.mes_fim||'',
+      responsavel:d.responsavel||'', ativo:d.ativo||'Sim', obs:d.obs||''
+    };
+    const {error} = await sb.from('cadastro').upsert(row, {onConflict:'id'});
+    if(error) { console.error('saveCad error:', JSON.stringify(error)); toast('Erro ao salvar: '+error.message,'err'); return false; }
+    return true;
+  } catch(e) { console.error('saveCad exception:',e); toast('Erro ao salvar despesa','err'); return false; }
 }
 
 async function delCadFromDB(id){
-  await sb.from('lancamentos').delete().eq('cad_id',id).eq('status','Sem fatura');
-  await sb.from('cadastro').delete().eq('id',id);
+  try {
+    const {error:e1} = await sb.from('lancamentos').delete().eq('cad_id',id).eq('status','Sem fatura');
+    if(e1) console.error('delLanc error:',e1.message);
+    const {error:e2} = await sb.from('cadastro').delete().eq('id',id);
+    if(e2) console.error('delCad error:',e2.message);
+  } catch(e){ console.error('delCad exception:',e); }
 }
 
 async function saveCfgToDB(key, val){
@@ -1252,10 +1280,17 @@ async function resetAll(){
   if(!confirm('Resetar todos os dados do sistema?'))return;
   D.cad=seedCad();D.forn=seedForn();D.cfg=defCfg();D.lanc=[];syncLanc();
   // Delete all from DB then re-seed
-  await sb.from('lancamentos').delete().neq('id','__none__');
-  await sb.from('cadastro').delete().neq('id','__none__');
-  await sb.from('fornecedores').delete().neq('id','__none__');
-  await sb.from('configuracoes').delete().neq('id','__none__');
+  // Delete via RPC to bypass RLS issues with bulk delete
+  try {
+    const tables = ['lancamentos','cadastro','fornecedores','configuracoes'];
+    for(const t of tables){
+      let q = sb.from(t).delete();
+      // Use a condition that matches all rows
+      q = q.gte('created_at','1970-01-01');
+      const {error} = await q;
+      if(error) console.warn('Reset delete '+t+':',error.message);
+    }
+  } catch(e){ console.warn('Reset error:',e); }
   D.cad=seedCad(); D.forn=seedForn(); D.cfg=defCfg(); D.lanc=[];
   await seedToDB(); await seedFornToDB(); await saveAllCfg();
   renderAll();buildCfg();toast('Dados resetados');
