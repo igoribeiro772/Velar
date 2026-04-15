@@ -875,34 +875,64 @@ async function saveAllCfg(){
 
 // ── SYNC ─────────────────────────────────────────────────────────────
 function syncLanc(ano){
-  // ano=null means sync all years currently in D.lanc
+  // Build list of years to process
   const anosParaSync = ano ? [ano] : [...new Set(D.lanc.map(l=>l.ano||2026).concat(ANOS_DISP))];
   const ids=new Set(D.cad.map(d=>d.id));
   D.lanc=D.lanc.filter(l=>ids.has(l.cadId)||l.status!=='Sem fatura');
+
   D.cad.forEach(d=>{
-    const ini=MN[d.mes_ini]||1,fim=d.mes_fim?(MN[d.mes_fim]||12):12;
-    // determine which years this despesa covers
-    const anoIni=parseInt(d.ano_ini)||2026;
-    const anoFim=d.ano_fim?parseInt(d.ano_fim):2099;
-    const anosList = ano ? [ano] : anosParaSync;
+    const mesIniNum = MN[d.mes_ini]||1;
+    const mesFimNum = d.mes_fim?(MN[d.mes_fim]||12):12;
+    const anoIni    = parseInt(d.ano_ini)||2026;
+    const anoFim    = d.ano_fim?parseInt(d.ano_fim):anoIni;
+    const anosList  = ano ? [ano] : anosParaSync;
+
     anosList.forEach(yr=>{
+      // Skip years completely outside the range
       if(yr<anoIni||yr>anoFim) return;
+
       MESES.forEach((mes,mi)=>{
         const mn=mi+1;
-        if(mn<ini||mn>fim){D.lanc=D.lanc.filter(l=>!(l.cadId===d.id&&l.mes===mes&&l.ano===yr&&l.status==='Sem fatura'));return;}
+
+        // Determine if this month/year combination is within the vigência:
+        // - First year: only months >= mesIniNum
+        // - Last year: only months <= mesFimNum
+        // - Middle years: all months (1–12)
+        // - Single year (anoIni===anoFim): mesIniNum <= mn <= mesFimNum
+        let ativo = true;
+        if(anoIni===anoFim){
+          ativo = mn>=mesIniNum && mn<=mesFimNum;
+        } else if(yr===anoIni){
+          ativo = mn>=mesIniNum;
+        } else if(yr===anoFim){
+          ativo = mn<=mesFimNum;
+        }
+        // yr between anoIni and anoFim: all months active (ativo stays true)
+
+        if(!ativo){
+          // Remove Sem fatura lançamentos outside the active period
+          D.lanc=D.lanc.filter(l=>!(l.cadId===d.id&&l.mes===mes&&l.ano===yr&&l.status==='Sem fatura'));
+          return;
+        }
+
         const ex=D.lanc.find(l=>l.cadId===d.id&&l.mes===mes&&l.ano===yr);
         if(!ex){
-          D.lanc.push({id:d.id+'_'+yr+'_'+mn,cadId:d.id,mes,ano:yr,obra:d.obra,cat:d.cat,tipo:d.tipo||'',
-            forn:d.forn,contrato:d.contrato||'',venc:d.venc,venc_ov:null,
-            val_ref:d.valor,val_fatura:null,pgto:d.pgto,responsavel:d.responsavel||'',
-            status:'Sem fatura',obs_fixa:d.obs||'',obs:'',titulo:'',medicao:'',
-            csc_id:'',usuario:'',atualiz:'',hist:[]});
+          D.lanc.push({
+            id:d.id+'_'+yr+'_'+mn,cadId:d.id,mes,ano:yr,
+            obra:d.obra,cat:d.cat,tipo:d.tipo||'',forn:d.forn,
+            contrato:d.contrato||'',venc:d.venc,venc_ov:null,
+            val_ref:d.valor,val_fatura:null,pgto:d.pgto,
+            responsavel:d.responsavel||'',status:'Sem fatura',
+            obs_fixa:d.obs||'',obs:'',titulo:'',medicao:'',
+            csc_id:'',usuario:'',atualiz:'',hist:[]
+          });
         } else {
           ex.obra=d.obra;ex.cat=d.cat;ex.tipo=d.tipo||'';ex.forn=d.forn;
-          ex.contrato=d.contrato||'';ex.val_ref=d.valor;ex.pgto=d.pgto;ex.obs_fixa=d.obs||'';
+          ex.contrato=d.contrato||'';ex.val_ref=d.valor;ex.pgto=d.pgto;
+          ex.obs_fixa=d.obs||'';
           ex.venc=ex.venc_ov!=null?ex.venc_ov:d.venc;
-          if(!ex.hist)ex.hist=[];if(!ex.titulo)ex.titulo='';if(!ex.csc_id)ex.csc_id='';
-          if(!ex.ano)ex.ano=yr;
+          if(!ex.hist)ex.hist=[];if(!ex.titulo)ex.titulo='';
+          if(!ex.csc_id)ex.csc_id='';if(!ex.ano)ex.ano=yr;
         }
       });
     });
@@ -1327,7 +1357,12 @@ async function saveCad(){
   const obra=g('n-obra'),cat=g('n-cat'),forn=g('n-forn'),ini=g('n-ini');
   if(!obra||!cat||!forn||!ini){toast('Preencha obra, categoria, fornecedor e mês de início','err');return;}
   const fim=g('n-fim');
-  if(fim&&MN[fim]<MN[ini]){toast('Mês final não pode ser anterior ao início','err');return;}
+  const anoIniVal=parseInt(g('n-ano-ini'))||TODAY.getFullYear();
+  const anoFimVal=parseInt(g('n-ano-fim'))||anoIniVal;
+  // Mês final só não pode ser menor que mês inicial SE for no mesmo ano
+  if(fim&&anoFimVal===anoIniVal&&MN[fim]<MN[ini]){
+    toast('Mês final não pode ser anterior ao mês de início no mesmo ano','err');return;
+  }
   const obj={id:ST.editCadId||nid(),obra,cat,tipo:g('n-tipo'),forn,contrato:g('n-cont'),
     venc:parseInt(g('n-venc'))||null,valor:parseFloat(g('n-valor'))||0,
     pgto:g('n-pgto'),mes_ini:ini,mes_fim:fim,
